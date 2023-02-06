@@ -3,7 +3,8 @@ classdef ServiceQueue < handle
         Time;
         NumServers;
         InterArrivalDist;
-        ServiceDist;
+        ServiceDist;  %service distribution without helper
+        ServiceDist2; %service distribution with helper
         ServerAvailable;
         Servers;
         Events;
@@ -14,18 +15,25 @@ classdef ServiceQueue < handle
     end
     methods
         function obj = ServiceQueue(Time, NumServers, ...
-                ArrivalRate, DepartureRate, LogInterval)
+                ArrivalRate,  ...
+                MeanServiceTimeW, MeanServiceTimeWO, ...
+                LogInterval)
             arguments
                 Time = 0.0;
                 NumServers = 1;
-                ArrivalRate = 0.5;
-                DepartureRate = 0.6;
+                ArrivalRate = 0.5; %30 per hour and convert to minutes 
+                %DepartureRate = 0.6; %can change to mean service time instead 
+                MeanServiceTimeW = 1;    %mean service time with helper 
+                MeanServiceTimeWO = 1.5; %mean service time without helper 
                 LogInterval = 1.0;
             end
             obj.Time = Time;
             obj.NumServers = NumServers;
             obj.InterArrivalDist = makedist("Exponential","mu",1/ArrivalRate);
-            obj.ServiceDist = makedist("Exponential","mu",1/DepartureRate);
+            obj.ServiceDist = makedist("Exponential","mu", MeanServiceTimeWO);
+            obj.ServiceDist2 = makedist("Exponential", "mu", MeanServiceTimeW);
+            %have 2 service dist with one with the helper and one without
+            %the helper 
             obj.ServerAvailable = repelem(true, NumServers);
             obj.Servers = cell([1, NumServers]);
             obj.Events = PriorityQueue({}, @(x) x.Time);
@@ -80,7 +88,17 @@ classdef ServiceQueue < handle
             customer.BeginServiceTime = obj.Time;
             obj.Servers{j} = customer;
             obj.ServerAvailable(j) = false;
-            service_time = random(obj.ServiceDist);
+            service_time = 0;
+            NumWaiting = size(obj.Waiting, 2);
+            if (NumWaiting <= 1)
+              service_time = random(obj.ServiceDist);
+              if(NumWaiting > 1)
+                  service_time = random(obj.ServiceDist2);
+              end
+            end 
+            %look at the state of the system and if there was a helper user
+            %the faster distribution rate and if not use the slower
+            %distribution rate 
             obj.schedule_event(Departure(obj.Time + service_time, j));
         end
         function advance(obj)
